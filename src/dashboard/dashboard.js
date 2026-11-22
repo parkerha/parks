@@ -7,17 +7,19 @@
   const SVG = "http://www.w3.org/2000/svg";
 
   let range = "30d";
+  let device = "";      // "" = all devices
+  let subsMode = "all"; // all | without | with
   let videoFilter = "";
   let videoLimit = 100;
-  let state = null; // { all, entries, slots }
+  let state = null; // { all, entries, rows, devices, deviceId, syncInfo, slots }
 
   // --------------------------------------------------------------- render
 
   async function load() {
-    const all = await api.storage.local.get(null);
-    const entries = S.entriesFromStorage(all);
-    const slots = S.colorSlots(S.aggregate(entries, null).byLang, SERIES_COUNT);
-    state = { all, entries, slots };
+    const data = await LWData.load();
+    // Colors follow all-time totals across every device, so filters never repaint a language.
+    const slots = S.colorSlots(S.aggregate(data.rows, null).byLang, SERIES_COUNT);
+    state = { ...data, all: data.local, slots };
     render();
   }
 
@@ -25,31 +27,132 @@
     const today = dayKey();
     const r = S.rangeFor(range, today);
     if (!r.from) {
-      const first = state.entries.reduce((min, e) => (e.d < min ? e.d : min), today);
+      const first = state.rows.reduce((min, e) => (e.d < min ? e.d : min), today);
       return { from: first, to: today };
     }
     return r;
   }
 
   function render() {
-    const { entries, slots } = state;
+    const { slots, deviceId } = state;
+    if (device && !state.devices[device]) device = "";
     const r = currentRange();
-    const agg = S.aggregate(entries, r);
-    const vids = S.videos(entries, r);
+    const deviceRows = device ? state.rows.filter((row) => row.dev === device) : state.rows;
+    const rows = S.filterSubs(deviceRows, subsMode);
+    const agg = S.aggregate(rows, r);
+    const localEntries = !device || device === deviceId ? S.filterSubs(state.entries, subsMode) : [];
+    const vids = S.videos(localEntries, r);
     const sorted = S.sortedLangs(agg.byLang);
     const nDays = S.daysBetween(r.from, r.to).length;
+    const subAgg = S.aggregate(deviceRows, r); // the subtitle breakdown ignores the subtitle filter
 
     for (const b of document.querySelectorAll("#range button")) b.setAttribute("aria-pressed", String(b.dataset.range === range));
+    renderFilters();
     document.getElementById("t-total").textContent = formatDuration(agg.total);
     document.getElementById("t-langs").textContent = String(sorted.filter(([l]) => l !== "und").length);
     document.getElementById("t-videos").textContent = String(vids.length);
+    document.getElementById("t-videos-label").textContent =
+      Object.keys(state.devices).length > 1 ? "Videos (this device)" : "Videos";
     document.getElementById("t-avg").textContent = formatDuration(agg.total / Math.max(1, nDays));
+    const noSubs = subAgg.total - subAgg.subTotal;
+    document.getElementById("t-nosubs").textContent = subAgg.total ? `${Math.round((noSubs / subAgg.total) * 100)}%` : "–";
+    document.getElementById("t-nosubs-sub").textContent = subAgg.total ? formatDuration(noSubs) : "";
 
     document.getElementById("langs").replaceChildren(langList(sorted, agg.total, slots));
     renderChart(agg, r, slots);
+    renderSubtitles(subAgg);
     renderVideos(vids, sorted);
+    renderDevices(r);
     renderRules();
     renderSettings();
+  }
+
+  function renderFilters() {
+    const sel = document.getElementById("device-filter");
+    const ids = Object.keys(state.devices);
+    sel.closest("label").hidden = ids.length < 2;
+    sel.replaceChildren(el("option", { value: "", text: "All devices" }),
+      ...ids.map((id) => el("option", { value: id, text: deviceName(id) })));
+    sel.value = device;
+    document.getElementById("subs-filter").value = subsMode;
+  }
+
+  function deviceName(id) {
+    const d = state.devices[id] || {};
+    return `${d.name || `Device ${id.slice(0, 4)}`}${id === state.deviceId ? " (this one)" : ""}`;
+  }
+
+  // ------------------------------------------------------------ subtitles
+
+  function renderSubtitles(agg) {
+    const box = document.getElementById("subs");
+    const langs = S.sortedLangs(agg.byLang);
+    if (!langs.length) {
+      box.replaceChildren(el("p", { class: "empty", text: "Nothing watched in this period yet." }));
+      return;
+    }
+    const parts = (v) => {
+      const c = Math.min(v.c, v.s);
+      const cs = Math.min(v.cs, c);
+      return [["none", v.s - c, "No subtitles"], ["same", cs, "Same-language subtitles"], ["other", c - cs, "Other-language subtitles"]];
+    };
+    const legend = el("div", { class: "legend" }, parts({ s: 0, c: 0, cs: 0 }).map(([key, , label]) =>
+      el("span", {}, [el("span", { class: `key subs-${key}` }), label])));
+    const ul = el("ul", { class: "subs-list" });
+    const all = { s: agg.total, c: agg.subTotal, cs: agg.subSame };
+    for (const [lang, v] of [["__all", all], ...langs.map(([l]) => [l, agg.subs[l]])]) {
+      const ps = parts(v);
+      const name = lang === "__all" ? "All languages" : languageName(lang);
+      ul.append(el("li", { class: lang === "__all" ? "subs-row total" : "subs-row" }, [
+        el("div", { class: "subs-head" }, [el("span", { text: name }), el("span", { class: "num", text: formatDuration(v.s) })]),
+        el("div", { class: "subs-bar", role: "img", "aria-label": `${name}: ${ps.map(([, secs, label]) => `${label} ${formatDuration(secs)}`).join(", ")}` },
+          ps.filter(([, secs]) => secs > 0).map(([key, secs, label]) => el("span", {
+            class: `subs-${key}`, style: `flex-grow:${secs}`, title: `${label}: ${formatDuration(secs)} (${Math.round((secs / v.s) * 100)}%)`,
+          }))),
+        el("div", { class: "subs-nums secondary num" }, ps.map(([key, secs]) =>
+          el("span", {}, [el("span", { class: `key subs-${key}` }), `${formatDuration(secs)} · ${v.s ? Math.round((secs / v.s) * 100) : 0}%`]))),
+      ]));
+    }
+    box.replaceChildren(legend, ul);
+  }
+
+  // -------------------------------------------------------------- devices
+
+  function renderDevices(r) {
+    const box = document.getElementById("devices");
+    const info = state.syncInfo || {};
+    const ids = Object.keys(state.devices).sort((a, b) => (a === state.deviceId ? -1 : b === state.deviceId ? 1 : 0));
+    const items = ids.map((id) => {
+      const d = state.devices[id];
+      const rows = state.rows.filter((row) => row.dev === id);
+      const inRange = S.aggregate(rows, r).total;
+      const allTime = S.aggregate(rows, null).total;
+      const isSelf = id === state.deviceId;
+      const actions = isSelf
+        ? el("button", { type: "button", class: "link", text: "Rename", onclick: async () => {
+          const name = prompt("Name for this device:", d.name || "");
+          if (name != null) await api.runtime.sendMessage({ type: "renameDevice", name });
+        } })
+        : el("button", { type: "button", class: "link danger", text: "Remove", onclick: async () => {
+          if (confirm(`Remove “${d.name}” and its synced watch time from all devices?`)) {
+            await api.runtime.sendMessage({ type: "removeDevice", deviceId: id });
+          }
+        } });
+      return el("li", {}, [
+        el("div", {}, [
+          el("strong", { text: deviceName(id) }),
+          el("div", { class: "muted small", text: isSelf
+            ? (info.lastPublish ? `Last synced ${new Date(info.lastPublish).toLocaleTimeString()}` : "Not synced yet")
+            : (d.updated ? `Last update ${new Date(d.updated).toLocaleString()}` : "") }),
+        ]),
+        el("div", { class: "r num" }, [formatDuration(inRange), el("div", { class: "muted small", text: `${formatDuration(allTime)} all time` })]),
+        actions,
+      ]);
+    });
+    box.replaceChildren(el("ul", { class: "devices" }, items));
+    const err = document.getElementById("sync-error");
+    err.textContent = info.available === false ? "Sync storage isn't available in this browser."
+      : info.error ? `Sync problem: ${info.error}` : "";
   }
 
   // ---------------------------------------------------------------- chart
@@ -290,6 +393,7 @@
           : (v.title || v.k)),
         el("td", { class: "secondary", text: v.site || "" }),
         el("td", { class: "r", text: formatDuration(v.total) }),
+        el("td", { class: "r secondary", text: v.sub > 0.5 ? `${Math.round((Math.min(v.sub, v.total) / v.total) * 100)}%` : "–" }),
         el("td", {}, [select, mixed]),
         el("td", { class: "secondary", text: v.last ? new Date(v.last).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "" }),
         el("td", {}, el("button", {
@@ -303,7 +407,10 @@
       ]);
     }));
     if (!list.length) {
-      tbody.replaceChildren(el("tr", {}, el("td", { colspan: "6", class: "empty", text: "No videos in this period." })));
+      const text = device && device !== state.deviceId
+        ? "Per-video details stay on the device that watched them. Open the dashboard there to see them."
+        : "No videos in this period.";
+      tbody.replaceChildren(el("tr", {}, el("td", { colspan: "7", class: "empty", text })));
     }
     document.getElementById("more").hidden = list.length <= videoLimit;
   }
@@ -362,9 +469,12 @@
   });
 
   document.getElementById("export-csv").addEventListener("click", () => {
-    const rows = [["date", "language", "language_name", "seconds", "site", "title", "url", "video_key"]];
+    const rows = [["date", "language", "language_name", "seconds", "seconds_with_subtitles",
+      "seconds_with_same_language_subtitles", "subtitle_languages", "site", "title", "url", "video_key"]];
     for (const e of [...state.entries].sort((a, b) => a.d.localeCompare(b.d))) {
-      rows.push([e.d, e.l, languageName(e.l), Math.round(e.s), e.h, e.t, e.u, e.k]);
+      const subLangs = Object.entries(e.cl || {}).map(([l, v]) => `${l}:${Math.round(v)}`).join(" ");
+      rows.push([e.d, e.l, languageName(e.l), Math.round(e.s), Math.round(e.c || 0), Math.round(S.sameLangSubs(e)),
+        subLangs, e.h, e.t, e.u, e.k]);
     }
     download(`lingua-watch-${dayKey()}.csv`, rows.map((r) => r.map(csvCell).join(",")).join("\n"), "text/csv");
   });
@@ -402,6 +512,16 @@
     const b = e.target.closest("button[data-range]");
     if (b) { range = b.dataset.range; videoLimit = 100; render(); }
   });
+  document.getElementById("device-filter").addEventListener("change", (e) => {
+    device = e.target.value; videoLimit = 100; render();
+  });
+  document.getElementById("subs-filter").addEventListener("change", (e) => {
+    subsMode = e.target.value; videoLimit = 100; render();
+  });
+  document.getElementById("sync-now").addEventListener("click", async () => {
+    await api.runtime.sendMessage({ type: "syncNow" });
+    load();
+  });
   document.getElementById("video-filter").addEventListener("change", (e) => {
     videoFilter = e.target.value; videoLimit = 100; render();
   });
@@ -430,7 +550,7 @@
 
   let pending = null;
   api.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
+    if (area !== "local" && area !== "sync") return;
     clearTimeout(pending);
     const reload = () => {
       // Don't yank a dropdown out from under the user while they're choosing.

@@ -33,6 +33,28 @@ A content script runs in every frame. It finds the video that is actually playin
 
 Unknown languages are still tracked, under "Unknown". You can reassign them later.
 
+**Subtitles.** Every second is also tagged with whether subtitles were on and in which language:
+- YouTube: player caption state (including auto-translated captions), falling back to the CC button
+- Netflix: the player's active timed-text track (forced narrative subtitles count as off)
+- Other sites: standard HTML `<track>` subtitles that are showing. Players that draw their own captions can't be detected.
+
+Total time is unchanged. The dashboard splits each language into *no subtitles*, *same-language subtitles* and *other-language subtitles*. A **Count** filter switches every chart and total to "without subtitles only" or "with subtitles only".
+
+## Syncing between computers
+
+Install the extension on each computer, sign in to the same Firefox account, and make sure **Add-ons** is checked under Firefox Sync settings. Totals in the popup and dashboard then combine all devices.
+
+Firefox Sync gives each extension only 100 KB, so each device keeps its detailed per-video history locally and syncs a compact summary:
+- seconds per day per language, with subtitle splits, for the last ~3 months
+- monthly totals for anything older
+
+That's about 3–5 KB per device for a year of heavy viewing.
+
+- Site rules sync too. Per-video language corrections and settings stay local.
+- The dashboard's **Devices** card lets you rename this device, remove old devices and sync immediately. It also has a device filter.
+- Firefox uploads sync data on its own schedule, roughly every 10 minutes. A new number can take a while to show up on another device.
+- Each computer needs a permanent install, so the extension must be signed (`npm run build`, then upload as an unlisted add-on on addons.mozilla.org). Temporary add-ons disappear when Firefox restarts.
+
 ## Using it
 
 - **Toolbar badge** shows the language code of the video playing in the current tab.
@@ -43,7 +65,7 @@ Unknown languages are still tracked, under "Unknown". You can reassign them late
   - site rules and settings
   - JSON backup/import and CSV export
 
-All data stays in `browser.storage.local` on your machine. Nothing is sent anywhere.
+Detailed data stays in `browser.storage.local` on your machine. The only thing that leaves it is the daily summary sent through your own Firefox Sync account.
 
 ## Development
 
@@ -56,10 +78,12 @@ npm run lint        # web-ext lint
 Layout:
 - `src/content.js`: site adapters (YouTube, Netflix, generic) and the playback timer
 - `src/background.js`: storage writes (serialized), text language detection, the badge
-- `src/lib/`: shared pure helpers (`languages.js`, `stats.js`, `tracker.js`) and UI helpers
+- `src/lib/`: shared pure helpers (`languages.js`, `stats.js`, `tracker.js`), `data.js` (combines local + synced data) and UI helpers
 - `src/popup/`, `src/dashboard/`: the UI
 
-Storage: one entry per (day, language, video) under `e:<day>|<lang>|<videoKey>`. Everything else is computed from those entries.
+Storage: one entry per (day, language, video) under `e:<day>|<lang>|<videoKey>`, including seconds with subtitles (`c`) and per-subtitle-language seconds (`cl`). Everything else is computed from those entries.
+
+Sync keys: `dev:<id>` (name), `h:<id>:<YYYY-MMa|b>` (daily data per half-month), `a:<id>` (older monthly totals) and `siteRules`.
 
 ## Limitations
 

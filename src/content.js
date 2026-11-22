@@ -88,7 +88,18 @@
       if (videoLang) out.push({ lang: videoLang, source: "metadata" });
       return out;
     },
+    subtitles: (video) => nativeSubtitles(video),
   };
+
+  /** Subtitles shown through the standard HTML <track> API. */
+  function nativeSubtitles(video) {
+    for (const t of list(video.textTracks)) {
+      if (t && t.mode === "showing" && (t.kind === "subtitles" || t.kind === "captions")) {
+        return { on: true, lang: normalizeLang(t.language) };
+      }
+    }
+    return { on: false, lang: null };
+  }
 
   /** schema.org VideoObject/Movie/Episode `inLanguage` from JSON-LD blocks. */
   function jsonLdLanguage() {
@@ -192,6 +203,19 @@
       }
       return out;
     },
+    subtitles(video) {
+      const el = this.playerEl(video);
+      if (!el) return nativeSubtitles(video);
+      const p = page(el);
+      try {
+        const track = typeof p.getOption === "function" ? p.getOption("captions", "track") : null;
+        // Auto-translated captions report the language they're translated into.
+        const code = str(dig(track, "translationLanguage", "languageCode")) || str(dig(track, "languageCode"));
+        if (code) return { on: true, lang: normalizeLang(code) };
+      } catch (e) { /* fall back to the CC button */ }
+      const btn = el.querySelector(".ytp-subtitles-button");
+      return { on: !!btn && btn.getAttribute("aria-pressed") === "true", lang: null };
+    },
     /** Best effort: ask the player which audio track is active. */
     currentAudioTrackId(video, knownIds) {
       const el = this.playerEl(video);
@@ -270,6 +294,15 @@
       try { track = p.getAudioTrack(); } catch (e) { track = null; }
       const lang = normalizeLang(str(dig(track, "bcp47")) || str(dig(track, "language")));
       return lang ? [{ lang, source: "audioTrack" }] : [];
+    },
+    subtitles(video) {
+      const p = this.player();
+      if (!p) return nativeSubtitles(video);
+      let t;
+      try { t = p.getTimedTextTrack(); } catch (e) { return nativeSubtitles(video); }
+      const bcp = str(dig(t, "bcp47"));
+      const off = !t || dig(t, "isNoneTrack") || dig(t, "isForced") || !bcp || bcp === "none";
+      return off ? { on: false, lang: null } : { on: true, lang: normalizeLang(bcp) };
     },
   };
 
@@ -406,7 +439,7 @@
     const key = safe(() => adapter.videoKey(video), genericVideoKey(location.href));
     if (!ctx || ctx.key !== key) {
       const old = ctx;
-      ctx = { key, video, pending: 0, detection: null, detected: false, title: "", url: location.href };
+      ctx = { key, video, pending: 0, pendingSub: 0, pendingSubLangs: {}, subs: null, detection: null, detected: false, title: "", url: location.href };
       if (old) flush(old);
       detect(ctx).then(() => sendStatus(true));
     }
@@ -415,18 +448,32 @@
 
     const counting = shouldCount(video);
     const now = { real: performance.now(), media: video.currentTime };
+    ctx.subs = safe(() => adapter.subtitles(video), { on: false, lang: null });
     if (counting) {
-      ctx.pending += measureElapsed(samples.get(video), now, video.playbackRate);
+      addTime(ctx, measureElapsed(samples.get(video), now, video.playbackRate));
       samples.set(video, now);
     } else {
       samples.delete(video);
     }
 
-    if (counting !== wasCounting) {
+    const subsSig = `${ctx.subs.on}|${ctx.subs.lang}`;
+    if (counting !== wasCounting || subsSig !== ctx.subsSig) {
       wasCounting = counting;
+      ctx.subsSig = subsSig;
       sendStatus(counting);
     }
     if (tickCount % FLUSH_EVERY_TICKS === 0) flush();
+  }
+
+  /** Add watched seconds, noting whether subtitles were on and in which language. */
+  function addTime(c, seconds) {
+    if (!(seconds > 0)) return;
+    c.pending += seconds;
+    if (c.subs && c.subs.on) {
+      c.pendingSub += seconds;
+      const l = c.subs.lang || "und";
+      c.pendingSubLangs[l] = (c.pendingSubLangs[l] || 0) + seconds;
+    }
   }
 
   async function flush(c = ctx) {
@@ -436,12 +483,18 @@
       // Re-detect on every flush: players load metadata late, and you may switch audio tracks.
       if (c === ctx || !c.detected) await detect(c);
       const seconds = c.pending;
+      const subSeconds = c.pendingSub;
+      const subLangs = c.pendingSubLangs;
       c.pending = 0;
+      c.pendingSub = 0;
+      c.pendingSubLangs = {};
       await api.runtime.sendMessage({
         type: "record",
         record: {
           videoKey: c.key,
           seconds,
+          subSeconds,
+          subLangs,
           lang: c.detection.lang,
           source: c.detection.source,
           title: c.title,
@@ -469,6 +522,7 @@
         lang: ctx.detection.lang,
         source: ctx.detection.source,
         playing: !!playing,
+        subtitles: ctx.subs || { on: false, lang: null },
         paused: !!settings.trackingPaused,
       },
     }).catch(() => {});
@@ -500,7 +554,7 @@
       // Count the partial second since the last tick before the sample is dropped.
       const prev = samples.get(v);
       if (evt !== "seeking" && prev && ctx && ctx.video === v) {
-        ctx.pending += measureElapsed(prev, { real: performance.now(), media: v.currentTime }, v.playbackRate);
+        addTime(ctx, measureElapsed(prev, { real: performance.now(), media: v.currentTime }, v.playbackRate));
       }
       samples.delete(v);
       if (evt !== "seeking") flush();

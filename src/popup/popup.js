@@ -11,16 +11,21 @@
   let lastNowSig = null;
 
   async function render() {
-    const all = await api.storage.local.get(null);
+    const data = await LWData.load();
+    const all = data.local;
     settings = { ...DEFAULT_SETTINGS, ...(all.settings || {}) };
-    const entries = LWStats.entriesFromStorage(all);
-    const slots = LWStats.colorSlots(LWStats.aggregate(entries, null).byLang, LWUI.SERIES_COUNT);
-    const agg = LWStats.aggregate(entries, LWStats.rangeFor(range, dayKey()));
+    // Totals combine every synced device.
+    const slots = LWStats.colorSlots(LWStats.aggregate(data.rows, null).byLang, LWUI.SERIES_COUNT);
+    const agg = LWStats.aggregate(data.rows, LWStats.rangeFor(range, dayKey()));
 
     document.getElementById("total").textContent = formatDuration(agg.total);
     const label = { today: "watched today", "7d": "watched in the last 7 days", "30d": "watched in the last 30 days", all: "watched in total" }[range];
     const nLangs = Object.keys(agg.byLang).filter((l) => l !== "und").length;
-    document.getElementById("total-label").textContent = `${label} · ${nLangs} language${nLangs === 1 ? "" : "s"}`;
+    const nDevices = new Set(data.rows.map((r) => r.dev)).size;
+    document.getElementById("total-label").textContent =
+      `${label} · ${nLangs} language${nLangs === 1 ? "" : "s"}${nDevices > 1 ? ` · ${nDevices} devices` : ""}`;
+    const noSubs = agg.total ? Math.round(((agg.total - agg.subTotal) / agg.total) * 100) : 0;
+    document.getElementById("subs-line").textContent = agg.total ? `${noSubs}% without subtitles` : "";
     document.getElementById("langs").replaceChildren(langList(LWStats.sortedLangs(agg.byLang), agg.total, slots));
 
     for (const b of document.querySelectorAll("#range button")) b.setAttribute("aria-pressed", String(b.dataset.range === range));
@@ -45,7 +50,7 @@
     const overrides = all.overrides || {};
     const siteRules = all.siteRules || {};
     // Don't rebuild (and reset the user's half-made selection) if nothing changed.
-    const sig = JSON.stringify([status.videoKey, status.lang, status.source, status.playing, status.title,
+    const sig = JSON.stringify([status.videoKey, status.lang, status.source, status.playing, status.title, status.subtitles,
       overrides[status.videoKey], siteRules[status.site], settings.trackingPaused]);
     if (sig === lastNowSig) return;
     lastNowSig = sig;
@@ -94,9 +99,15 @@
         el("strong", { text: languageName(status.lang) }),
         el("span", { class: "source", text: ` · ${(SOURCES[status.source] || SOURCES.none).label}` }),
       ]),
+      el("div", { class: "source" }, subtitleText(status.subtitles)),
       controls,
       ruleRow,
     );
+  }
+
+  function subtitleText(subs) {
+    if (!subs || !subs.on) return "Subtitles off";
+    return subs.lang ? `Subtitles on (${languageName(subs.lang)})` : "Subtitles on";
   }
 
   async function refresh() {

@@ -11,7 +11,9 @@
   <script src="../../src/background.js"></script>
 </head>
 <body>
-  <video id="v" src="clip.webm" width="320" height="180" playsinline></video>
+  <video id="v" src="clip.webm" width="320" height="180" playsinline>
+    <track kind="subtitles" srclang="es" label="Español" src="subs.vtt">
+  </video>
   <script src="../../src/lib/tracker.js"></script>
   <script src="../../src/content.js"></script>
 </body>

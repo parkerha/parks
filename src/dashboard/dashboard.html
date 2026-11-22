@@ -23,13 +23,24 @@
         <button type="button" data-range="365d">Year</button>
         <button type="button" data-range="all">All time</button>
       </div>
+      <label>Device
+        <select id="device-filter"></select>
+      </label>
+      <label>Count
+        <select id="subs-filter">
+          <option value="all">All watch time</option>
+          <option value="without">Without subtitles only</option>
+          <option value="with">With subtitles only</option>
+        </select>
+      </label>
     </div>
 
     <section class="tiles">
       <div class="card tile"><div class="muted">Total watched</div><div class="tile-value" id="t-total">0s</div></div>
       <div class="card tile"><div class="muted">Languages</div><div class="tile-value" id="t-langs">0</div></div>
-      <div class="card tile"><div class="muted">Videos</div><div class="tile-value" id="t-videos">0</div></div>
+      <div class="card tile"><div class="muted" id="t-videos-label">Videos</div><div class="tile-value" id="t-videos">0</div></div>
       <div class="card tile"><div class="muted">Daily average</div><div class="tile-value" id="t-avg">0s</div></div>
+      <div class="card tile"><div class="muted">Without subtitles</div><div class="tile-value" id="t-nosubs">–</div><div class="muted small" id="t-nosubs-sub"></div></div>
     </section>
 
     <section class="grid2">
@@ -48,6 +59,23 @@
       </div>
     </section>
 
+    <section class="grid2">
+      <div class="card">
+        <h2>Subtitles</h2>
+        <p class="muted small">How much of each language you watched with subtitles off, with subtitles in the same language, or with subtitles in another language.</p>
+        <div id="subs"></div>
+      </div>
+      <div class="card">
+        <div class="section-head">
+          <h2>Devices</h2>
+          <button type="button" id="sync-now">Sync now</button>
+        </div>
+        <p class="muted small">Totals combine every device signed in to the same Firefox account with add-on sync turned on. Each device syncs a daily summary; per-video details stay on the device that watched them.</p>
+        <div id="devices"></div>
+        <p id="sync-error" class="small" role="status"></p>
+      </div>
+    </section>
+
     <section class="card">
       <div class="section-head">
         <h2>Videos</h2>
@@ -57,7 +85,7 @@
       </div>
       <p class="muted small">Wrong language? Change it here and all time for that video moves to the new language.</p>
       <div class="table-wrap"><table id="videos">
-        <thead><tr><th>Video</th><th>Site</th><th class="r">Time</th><th>Language</th><th>Last watched</th><th></th></tr></thead>
+        <thead><tr><th>Video</th><th>Site</th><th class="r">Time</th><th class="r">Subtitles</th><th>Language</th><th>Last watched</th><th></th></tr></thead>
         <tbody></tbody>
       </table></div>
       <button type="button" id="more" hidden>Show more</button>
@@ -82,7 +110,7 @@
         <label class="check"><input type="checkbox" id="s-ignoreAds"> Don't count YouTube ads</label>
 
         <h2 class="mt">Your data</h2>
-        <p class="muted small">Everything stays on this computer, in the extension's local storage.</p>
+        <p class="muted small">Detailed history stays on this computer. Only a daily per-language summary goes to Firefox Sync, and only if you use it.</p>
         <div class="buttons">
           <button type="button" id="export-json">Export backup (JSON)</button>
           <button type="button" id="export-csv">Export CSV</button>
@@ -97,6 +125,7 @@
 
   <script src="../lib/languages.js"></script>
   <script src="../lib/stats.js"></script>
+  <script src="../lib/data.js"></script>
   <script src="../lib/ui.js"></script>
   <script src="dashboard.js"></script>
 </body>

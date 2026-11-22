@@ -90,3 +90,53 @@ test("sanitizeEntry rejects garbage", () => {
   assert.equal(S.sanitizeEntry({ k: "a", d: "2026-01-01", l: "en", s: -1 }), null);
   assert.equal(S.sanitizeEntry({ k: "a", d: "2026-01-01", l: "en", s: 5 }).s, 5);
 });
+
+test("subtitle aggregation and filtering", () => {
+  const entries = [
+    { k: "a", d: "2026-11-22", l: "es", s: 100, c: 60, cl: { es: 40, en: 20 } },
+    { k: "b", d: "2026-11-22", l: "ja", s: 50 },
+  ];
+  const agg = S.aggregate(entries, null);
+  assert.equal(agg.subTotal, 60);
+  assert.equal(agg.subSame, 40);
+  assert.deepEqual(agg.subs.es, { s: 100, c: 60, cs: 40 });
+  assert.equal(S.aggregate(S.filterSubs(entries, "without"), null).total, 90);
+  assert.equal(S.aggregate(S.filterSubs(entries, "with"), null).total, 60);
+  assert.equal(S.filterSubs(entries, "with").length, 1);
+  const m = S.mergeEntries(entries[0], { ...entries[0], s: 10, c: 5, cl: { es: 5 }, ts: 9 });
+  assert.deepEqual([m.s, m.c, m.cl.es, m.cl.en], [110, 65, 45, 20]);
+});
+
+test("sync summary round-trips and stays small", () => {
+  const entries = [];
+  const langs = ["es", "ja", "fr", "de", "ko", "en"];
+  // Two years of daily viewing in six languages.
+  for (let n = 0; n < 730; n++) {
+    const d = S.addDays("2026-11-22", -n);
+    for (const l of langs) entries.push({ k: `v${n}${l}`, d, l, s: 600 + n, c: 100, cl: { [l]: 50 } });
+  }
+  const { halves, archive } = S.buildSyncSummary(entries, "2026-11-22");
+  for (const v of Object.values(halves)) assert.ok(JSON.stringify(v).length < 8000);
+  assert.ok(JSON.stringify(archive).length < 8000);
+  const totalBytes = JSON.stringify(halves).length + JSON.stringify(archive).length;
+  assert.ok(totalBytes < 25000, `summary is ${totalBytes} bytes`);
+  const rows = S.rowsFromSyncSummary(halves, archive, "dev1");
+  const expected = entries.reduce((a, e) => a + e.s, 0);
+  const got = rows.reduce((a, r) => a + r.s, 0);
+  assert.ok(Math.abs(got - expected) < rows.length, `${got} vs ${expected}`);
+  assert.equal(rows.reduce((a, r) => a + r.cs, 0), 50 * entries.length);
+});
+
+test("parseSync reads devices and their rows", () => {
+  const { devices, rowsByDevice } = S.parseSync({
+    "dev:abc": { name: "Laptop" },
+    "h:abc:2026-11b": { "2026-11-20": { es: [100, 10, 5] } },
+    "a:abc": { "2025-01": { ja: [50, 0, 0] } },
+    "h:zzz:2026-11a": { "2026-11-02": { fr: [7, 0, 0] } },
+    siteRules: { "x.com": "es" },
+  });
+  assert.equal(devices.abc.name, "Laptop");
+  assert.ok(devices.zzz.name);
+  assert.equal(rowsByDevice.abc.length, 2);
+  assert.deepEqual(rowsByDevice.abc.find((r) => r.l === "ja").d, "2025-01-01");
+});

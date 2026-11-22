@@ -23,6 +23,13 @@
     const seconds = Math.min(Number(rec.seconds) || 0, MAX_SECONDS_PER_RECORD);
     if (!(seconds > 0) || typeof rec.videoKey !== "string" || !rec.videoKey) return;
     const lang = normalizeLang(rec.lang) || UNKNOWN;
+    const subSeconds = Math.min(seconds, Math.max(0, Number(rec.subSeconds) || 0));
+    const subLangs = {};
+    for (const [l, v] of Object.entries(rec.subLangs && typeof rec.subLangs === "object" ? rec.subLangs : {})) {
+      const code = l === UNKNOWN ? UNKNOWN : normalizeLang(l);
+      const n = Math.min(seconds, Number(v) || 0);
+      if (code && n > 0) subLangs[code] = (subLangs[code] || 0) + n;
+    }
     const day = dayKey();
     const id = Stats.entryId(rec.videoKey, day, lang);
     await serial(async () => {
@@ -32,6 +39,8 @@
         d: day,
         l: lang,
         s: (cur ? cur.s : 0) + seconds,
+        c: (cur && cur.c ? cur.c : 0) + subSeconds,
+        cl: mergeLangMaps(cur && cur.cl, subLangs),
         t: String(rec.title || (cur && cur.t) || "").slice(0, 300),
         u: String(rec.url || (cur && cur.u) || "").slice(0, 2000),
         h: String(rec.site || (cur && cur.h) || "").slice(0, 255),
@@ -40,6 +49,13 @@
       };
       await api.storage.local.set({ [id]: entry });
     });
+    syncDirty = true;
+  }
+
+  function mergeLangMaps(a, b) {
+    const out = { ...(a || {}) };
+    for (const [l, v] of Object.entries(b || {})) out[l] = (out[l] || 0) + v;
+    return out;
   }
 
   /** Move every stored second of one video to another language. */
@@ -53,7 +69,7 @@
         const newId = Stats.entryId(e.k, e.d, lang);
         const target = updates[newId] || all[newId];
         updates[newId] = target
-          ? { ...target, s: target.s + e.s, ts: Math.max(target.ts || 0, e.ts || 0) }
+          ? Stats.mergeEntries(target, e)
           : { ...e, l: lang, src: "override" };
         removals.push(key);
       }
@@ -62,6 +78,7 @@
         await api.storage.local.remove(removals);
       }
     });
+    syncDirty = true;
   }
 
   async function setOverride(videoKey, lang) {
@@ -94,11 +111,12 @@
         const id = Stats.entryId(e.k, e.d, e.l);
         const existing = updates[id] || all[id];
         // Merge by taking the larger value so importing the same backup twice is harmless.
-        updates[id] = existing ? { ...existing, s: Math.max(existing.s, e.s) } : e;
+        updates[id] = existing && existing.s >= e.s ? existing : e;
         added++;
       }
       await api.storage.local.set(updates);
     });
+    syncDirty = true;
     return added;
   }
 
@@ -108,6 +126,7 @@
       const keys = Object.keys(all).filter((k) => Stats.isEntryKey(k) && all[k] && all[k].k === videoKey);
       await api.storage.local.remove(keys);
     });
+    syncDirty = true;
   }
 
   async function resetAll() {
@@ -116,6 +135,109 @@
       await api.storage.local.remove(Object.keys(all).filter((k) => Stats.isEntryKey(k)));
       await api.storage.local.remove("overrides");
     });
+    syncDirty = true;
+    await publish();
+  }
+
+  // ------------------------------------------------------------------ sync
+  //
+  // storage.sync (Firefox Sync) is small: 100 KB total, 8 KB per item. So each
+  // device keeps its full per-video history locally and publishes only a compact
+  // per-day, per-language summary (see LWStats.buildSyncSummary). Every device
+  // reads the others' summaries to show combined totals.
+
+  const sync = api.storage.sync;
+  const PUBLISH_EVERY_MS = 60 * 1000;
+  let syncDirty = true;
+  let deviceId = null;
+  const syncStatus = { lastPublish: 0, error: null };
+
+  async function getDeviceId() {
+    if (deviceId) return deviceId;
+    const r = await api.storage.local.get("deviceId");
+    if (r.deviceId) return (deviceId = r.deviceId);
+    deviceId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    await api.storage.local.set({ deviceId });
+    return deviceId;
+  }
+
+  async function defaultDeviceName() {
+    const info = await api.runtime.getPlatformInfo().catch(() => ({}));
+    const os = { win: "Windows", mac: "Mac", linux: "Linux", android: "Android", cros: "ChromeOS" }[info.os];
+    return os ? `${os} computer` : "This computer";
+  }
+
+  async function publish() {
+    if (!sync) return;
+    syncDirty = false;
+    try {
+      await serial(async () => {
+        const id = await getDeviceId();
+        const entries = Stats.entriesFromStorage(await api.storage.local.get(null));
+        const { halves, archive } = Stats.buildSyncSummary(entries, dayKey());
+        const want = {};
+        for (const [h, v] of Object.entries(halves)) want[`h:${id}:${h}`] = v;
+        if (Object.keys(archive).length) want[`a:${id}`] = archive;
+
+        const existing = await sync.get(null);
+        const devKey = `dev:${id}`;
+        const updates = {};
+        for (const [k, v] of Object.entries(want)) {
+          if (JSON.stringify(existing[k]) !== JSON.stringify(v)) updates[k] = v;
+        }
+        const stale = Object.keys(existing).filter((k) =>
+          (k.startsWith(`h:${id}:`) || k === `a:${id}`) && !(k in want));
+        if (Object.keys(updates).length || stale.length || !existing[devKey]) {
+          const dev = existing[devKey] || { name: await defaultDeviceName() };
+          updates[devKey] = { ...dev, updated: Date.now() };
+          if (stale.length) await sync.remove(stale);
+          await sync.set(updates);
+        }
+      });
+      syncStatus.lastPublish = Date.now();
+      syncStatus.error = null;
+    } catch (e) {
+      syncDirty = true;
+      syncStatus.error = String((e && e.message) || e);
+    }
+  }
+
+  async function renameDevice(name) {
+    const id = await getDeviceId();
+    const key = `dev:${id}`;
+    const cur = (await sync.get(key))[key] || {};
+    await sync.set({ [key]: { ...cur, name: String(name || "").trim().slice(0, 60) || (await defaultDeviceName()), updated: Date.now() } });
+  }
+
+  async function removeDevice(id) {
+    if (!id || id === (await getDeviceId())) return;
+    const all = await sync.get(null);
+    await sync.remove(Object.keys(all).filter((k) => k === `dev:${id}` || k === `a:${id}` || k.startsWith(`h:${id}:`)));
+  }
+
+  // Site rules are small, so they sync too. Sync is the source of truth on startup.
+  const same = (a, b) => JSON.stringify(a || {}) === JSON.stringify(b || {});
+  async function initSiteRuleSync() {
+    if (!sync) return;
+    const [{ siteRules: remote }, { siteRules: local }] = await Promise.all([sync.get("siteRules"), api.storage.local.get("siteRules")]);
+    if (remote && !same(remote, local)) await api.storage.local.set({ siteRules: remote });
+    else if (!remote && local) await sync.set({ siteRules: local });
+  }
+  api.storage.onChanged.addListener(async (changes, area) => {
+    if (!changes.siteRules || !sync) return;
+    const value = changes.siteRules.newValue || {};
+    try {
+      if (area === "local" && !same(value, (await sync.get("siteRules")).siteRules)) await sync.set({ siteRules: value });
+      if (area === "sync" && !same(value, (await api.storage.local.get("siteRules")).siteRules)) await api.storage.local.set({ siteRules: value });
+    } catch (e) {
+      syncStatus.error = String((e && e.message) || e);
+    }
+  });
+
+  if (sync) {
+    initSiteRuleSync().catch(() => {});
+    publish();
+    setInterval(() => { if (syncDirty) publish(); }, PUBLISH_EVERY_MS);
   }
 
   // ------------------------------------------------------- text detection
@@ -191,6 +313,14 @@
         return deleteVideo(msg.videoKey).then(() => true);
       case "importEntries":
         return importEntries(msg.entries);
+      case "getSyncInfo":
+        return getDeviceId().then((id) => ({ deviceId: id, available: !!sync, ...syncStatus }));
+      case "syncNow":
+        return publish().then(() => ({ ...syncStatus }));
+      case "renameDevice":
+        return renameDevice(msg.name).then(() => true);
+      case "removeDevice":
+        return removeDevice(msg.deviceId).then(() => true);
       case "resetAll":
         return resetAll().then(() => true);
       default:

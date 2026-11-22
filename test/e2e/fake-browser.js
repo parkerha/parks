@@ -1,14 +1,14 @@
 /* Minimal in-page stand-in for the WebExtension `browser` API so background,
  * content script and pages can run together in one ordinary web page. */
 (function () {
-  const store = {};
   const changeListeners = [];
   const msgListeners = [];
   const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
-  function emit(changes) {
-    if (Object.keys(changes).length) changeListeners.forEach((l) => l(changes, "local"));
-  }
-  const local = {
+  function makeArea(area, store) {
+  const emit = (changes) => {
+    if (Object.keys(changes).length) changeListeners.forEach((l) => l(changes, area));
+  };
+  return {
     async get(keys) {
       if (keys == null) return clone(store);
       const list = typeof keys === "string" ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
@@ -27,6 +27,11 @@
       emit(changes);
     },
   };
+  }
+  const store = {};
+  const syncStore = {};
+  const local = makeArea("local", store);
+  const sync = makeArea("sync", syncStore);
   async function dispatch(msg) {
     const sender = { tab: { id: 1 }, frameId: 0 };
     for (const l of msgListeners) {
@@ -37,12 +42,14 @@
   }
   window.__badge = {};
   window.__store = store;
+  window.__sync = syncStore;
   window.browser = {
-    storage: { local, onChanged: { addListener: (l) => changeListeners.push(l) } },
+    storage: { local, sync, onChanged: { addListener: (l) => changeListeners.push(l) } },
     runtime: {
       sendMessage: (m) => dispatch(m),
       onMessage: { addListener: (l) => msgListeners.push(l) },
       openOptionsPage: () => {},
+      getPlatformInfo: async () => ({ os: "linux" }),
     },
     tabs: {
       onRemoved: { addListener() {} },
