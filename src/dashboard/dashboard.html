@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lingua Watch – Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../lib/ui.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <h1>Lingua Watch</h1>
+      <p class="secondary">Time spent watching videos, by language.</p>
+    </header>
+
+    <div class="filters">
+      <div class="segmented" id="range" role="group" aria-label="Time range">
+        <button type="button" data-range="today">Today</button>
+        <button type="button" data-range="7d">7 days</button>
+        <button type="button" data-range="30d">30 days</button>
+        <button type="button" data-range="90d">90 days</button>
+        <button type="button" data-range="365d">Year</button>
+        <button type="button" data-range="all">All time</button>
+      </div>
+    </div>
+
+    <section class="tiles">
+      <div class="card tile"><div class="muted">Total watched</div><div class="tile-value" id="t-total">0s</div></div>
+      <div class="card tile"><div class="muted">Languages</div><div class="tile-value" id="t-langs">0</div></div>
+      <div class="card tile"><div class="muted">Videos</div><div class="tile-value" id="t-videos">0</div></div>
+      <div class="card tile"><div class="muted">Daily average</div><div class="tile-value" id="t-avg">0s</div></div>
+    </section>
+
+    <section class="grid2">
+      <div class="card">
+        <h2>By language</h2>
+        <div id="langs"></div>
+      </div>
+      <div class="card">
+        <h2>Over time</h2>
+        <div id="legend" class="legend"></div>
+        <div id="chart" class="chart"></div>
+        <details class="table-view">
+          <summary>Show as table</summary>
+          <div id="chart-table"></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>Videos</h2>
+        <label>Language
+          <select id="video-filter"><option value="">All</option></select>
+        </label>
+      </div>
+      <p class="muted small">Wrong language? Change it here and all time for that video moves to the new language.</p>
+      <div class="table-wrap"><table id="videos">
+        <thead><tr><th>Video</th><th>Site</th><th class="r">Time</th><th>Language</th><th>Last watched</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <button type="button" id="more" hidden>Show more</button>
+    </section>
+
+    <section class="grid2">
+      <div class="card">
+        <h2>Site rules</h2>
+        <p class="muted small">Used when a video's language can't be read from its audio track or captions — e.g. a site that only shows anime in Japanese.</p>
+        <ul id="rules" class="rules"></ul>
+        <form id="rule-form" class="inline-form">
+          <input type="text" id="rule-site" placeholder="example.com" required aria-label="Site">
+          <span id="rule-lang-slot"></span>
+          <button type="submit">Add rule</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Settings</h2>
+        <label class="check"><input type="checkbox" id="s-trackingPaused"> Pause all tracking</label>
+        <label class="check"><input type="checkbox" id="s-ignoreMuted"> Don't count muted videos (autoplay previews)</label>
+        <label class="check"><input type="checkbox" id="s-ignoreHidden"> Don't count videos in background tabs</label>
+        <label class="check"><input type="checkbox" id="s-ignoreAds"> Don't count YouTube ads</label>
+
+        <h2 class="mt">Your data</h2>
+        <p class="muted small">Everything stays on this computer, in the extension's local storage.</p>
+        <div class="buttons">
+          <button type="button" id="export-json">Export backup (JSON)</button>
+          <button type="button" id="export-csv">Export CSV</button>
+          <label class="button-like">Import backup<input type="file" id="import" accept="application/json,.json" hidden></label>
+          <button type="button" id="reset" class="danger">Delete all data</button>
+        </div>
+        <p id="data-msg" class="small secondary" role="status"></p>
+      </div>
+    </section>
+  </main>
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+  <script src="../lib/languages.js"></script>
+  <script src="../lib/stats.js"></script>
+  <script src="../lib/ui.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

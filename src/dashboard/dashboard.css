@@ -1,0 +1,55 @@
+body { padding: 24px; }
+main { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { margin: 0; font-size: 22px; }
+h2 { margin: 0 0 12px; font-size: 15px; }
+h2.mt { margin-top: 20px; }
+.top p { margin: 4px 0 0; }
+.small { font-size: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.tile-value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 16px; }
+@media (max-width: 800px) { .tiles { grid-template-columns: repeat(2, 1fr); } .grid2 { grid-template-columns: 1fr; } }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 8px; color: var(--text-secondary); font-size: 12px; }
+.legend span.key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .grid line { stroke: var(--grid); stroke-width: 1; }
+.chart .axis-line { stroke: var(--axis); stroke-width: 1; }
+.chart text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .col:hover rect.seg, .chart .col:focus rect.seg { filter: brightness(1.12); }
+.chart .col:focus { outline: none; }
+.chart .col:focus .hit { stroke: var(--accent); stroke-width: 1.5; }
+.chart .hit { fill: transparent; }
+.table-view { margin-top: 10px; }
+.table-view summary { cursor: pointer; color: var(--text-secondary); }
+
+.tooltip {
+  position: fixed; pointer-events: none; z-index: 10; background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); font-size: 12px; min-width: 140px;
+}
+.tooltip .tt-head { color: var(--text-secondary); margin-bottom: 4px; }
+.tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+.tooltip .tt-key { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+.tooltip .tt-val { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 52px; }
+.tooltip .tt-name { color: var(--text-secondary); }
+
+.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+th { color: var(--text-muted); font-weight: 500; font-size: 12px; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
+td.title { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.title a { color: var(--text-primary); text-decoration: none; }
+td.title a:hover { text-decoration: underline; }
+td .mixed { color: var(--text-muted); font-size: 11px; display: block; }
+#more { margin-top: 10px; }
+
+.rules { list-style: none; padding: 0; margin: 0 0 10px; display: grid; gap: 6px; }
+.rules li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.inline-form { display: flex; gap: 6px; flex-wrap: wrap; }
+.inline-form input { flex: 1; min-width: 120px; }
+.check { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.button-like { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+table td, table th { font-variant-numeric: tabular-nums; }

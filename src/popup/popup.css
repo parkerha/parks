@@ -1,0 +1,13 @@
+body { width: 340px; padding: 10px; display: grid; gap: 10px; }
+header { display: flex; justify-content: space-between; align-items: center; }
+.range-row { margin-bottom: 10px; }
+.hero { margin-bottom: 12px; }
+.hero-value { font-size: 28px; font-weight: 600; line-height: 1.1; }
+#now .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0 4px; }
+#now .lang { font-size: 15px; }
+#now .source { color: var(--text-muted); font-size: 12px; }
+#now .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+#now .controls select { flex: 1; min-width: 0; }
+#now .rule { margin-top: 8px; font-size: 12px; }
+#now .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+footer { text-align: center; }

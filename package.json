@@ -1,0 +1,13 @@
+{
+  "name": "lingua-watch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Firefox extension that tracks video watch time by language.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "npx --yes web-ext lint --ignore-files test package.json README.md",
+    "build": "npx --yes web-ext build --overwrite-dest --ignore-files test package.json",
+    "start": "npx --yes web-ext run"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lingua Watch</title>
+  <link rel="stylesheet" href="../lib/ui.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <strong>Lingua Watch</strong>
+    <button id="pause" type="button"></button>
+  </header>
+
+  <section id="now" class="card" aria-live="polite"></section>
+
+  <section class="card">
+    <div class="range-row">
+      <div class="segmented" id="range" role="group" aria-label="Time range">
+        <button type="button" data-range="today">Today</button>
+        <button type="button" data-range="7d">7 days</button>
+        <button type="button" data-range="30d">30 days</button>
+        <button type="button" data-range="all">All time</button>
+      </div>
+    </div>
+    <div class="hero">
+      <div class="hero-value" id="total">0s</div>
+      <div class="muted" id="total-label">watched</div>
+    </div>
+    <div id="langs"></div>
+  </section>
+
+  <footer>
+    <button id="dashboard" type="button" class="link">Open full dashboard</button>
+  </footer>
+
+  <script src="../lib/languages.js"></script>
+  <script src="../lib/stats.js"></script>
+  <script src="../lib/tracker.js"></script>
+  <script src="../lib/ui.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

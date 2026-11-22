@@ -1,0 +1,4 @@
+node_modules/
+web-ext-artifacts/
+test/e2e/clip.webm
+test/e2e/*.png
