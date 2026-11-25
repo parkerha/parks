@@ -2,12 +2,30 @@
 
 A Firefox extension that tracks how much time you spend watching videos in each language: YouTube, Netflix, and any other site that uses an HTML5 `<video>`.
 
-## Install (development)
+## Install permanently (recommended)
+
+Regular Firefox only keeps add-ons that Mozilla has signed. Signing is free, and an "unlisted" add-on stays private to you:
+
+1. Back up existing data first: Dashboard → **Export backup (JSON)**.
+2. Run `npm run build` to create `web-ext-artifacts/lingua_watch_video_time_by_language-<version>.zip`.
+3. Go to <https://addons.mozilla.org/developers/addon/submit/distribution>, sign in, choose **On your own**, and upload the zip. Answer "No" to the source-code question, since the code isn't minified.
+4. Signing usually takes a few minutes. Download the signed `.xpi` and open it in Firefox (drag it into a window or use File → Open File). Do this on every computer.
+5. If the dashboard is empty, use **Import backup**.
+
+For later updates, bump `version` in `manifest.json` and upload again. Firefox keeps your data, because the add-on ID (`lingua-watch@example.invalid`) stays the same. Don't change that ID: sync data is tied to it.
+
+To sign from the command line instead, create API credentials at <https://addons.mozilla.org/developers/addon/api/key/> and run:
+
+```
+WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=... npm run sign
+```
+
+## Install temporarily (development)
 
 1. Open `about:debugging#/runtime/this-firefox` in Firefox.
 2. Click **Load Temporary Add-on…** and choose `manifest.json` from this folder.
 
-Or run `npm start` (uses `web-ext run`). To build a zip for signing, run `npm run build`.
+Temporary add-ons are removed when Firefox closes. `npm start` launches a throwaway Firefox profile with the add-on loaded.
 
 ## How it works
 

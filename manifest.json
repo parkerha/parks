@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Lingua Watch – Video Time by Language",
   "short_name": "Lingua Watch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tracks how much time you spend watching videos in each language on YouTube, Netflix and other sites.",
   "icons": {
     "48": "icons/icon.svg",
